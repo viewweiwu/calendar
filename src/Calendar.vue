@@ -1,5 +1,5 @@
 <template lang="pug">
-.calendar
+.calendar(@touchstart="handleStart" @touchmove="handleMove" @touchend="handleEnd")
   .calendar-header
     .calendar-header-item
       span {{ date.getFullYear() }}
@@ -11,13 +11,20 @@
       :key="item.value"
     ) {{ item.label }}
   .calendar-body
-    .calendar-item(
-      v-for="item in list"
-    ) {{ item.value }}
-  button(@click="setPrevMonthDayList") 上一页
-  button(@click="setNextMonthDayList") 下一页
+    .calendar-content(:style="contentStyle")
+      .calendar-card(
+        v-for="(card, key) in cardMap"
+      )
+        .calendar-item(
+          v-for="item in card"
+        ) {{ item.value }}
+  //- button(@click="setPrevMonthDayList") 上一页
+  //- button(@click="setNextMonthDayList") 下一页
 </template>
 <script>
+
+let windowWidth = window.innerWidth
+if (windowWidth > 700) windowWidth = 700
 
 const util = {
   // 根据日期获取这个月份第一天是星期几
@@ -59,6 +66,14 @@ const util = {
     // 添加进列表
     list.push(...prevMonthDayList, ...currMonthDayList, ...nextMonthDayList)
     return list
+  },
+  changeListByType (list, type) {
+    return list.map(item => {
+      return {
+        value: item.value,
+        type: item.type
+      }
+    })
   }
 }
 
@@ -75,56 +90,130 @@ export default {
         { value: 6, label: '六' },
         { value: 7, label: '日' }
       ],
-      list: []
+      cardMap: {
+        prevList: [],
+        currList: [],
+        nextList: []
+      },
+      isMove: false,
+      left: windowWidth
     }
   },
   mounted () {
-    this.setCurrMonthDayList()
+    this.init()
+  },
+  computed: {
+    contentStyle () {
+      let style = {
+        width: windowWidth * 3 + 'px',
+        transform: `translate3d(${-this.left}px, 0, 0)`
+      }
+      if (!this.isMove) {
+        style.transition = '300ms'
+      }
+      return style
+    }
   },
   methods: {
-    setCurrMonthDayList () {
-      this.list = util.createDayByDate(this.date)
+    init () {
+      let date = this.date
+      let month = date.getMonth()
+      let prevDate = new Date(date)
+      prevDate.setMonth(month - 1)
+      let nextDate = new Date(date)
+      nextDate.setMonth(month + 1)
+      this.cardMap.prevList = util.createDayByDate(prevDate)
+      this.cardMap.currList = util.createDayByDate(date)
+      this.cardMap.nextList = util.createDayByDate(nextDate)
     },
-    setPrevMonthDayList () {
-      this.date.setMonth(this.date.getMonth() - 1)
-      this.list = util.createDayByDate(this.date)
-    },
-    setNextMonthDayList () {
+    // toPrevCard () {
+    //   let nextDate = new Date(this.date)
+    //   nextDate.setMonth(nextDate.getMonth() - 1)
+    //   this.date.setMonth(this.date.getMonth() + 1)
+    //   this.cardMap.nextList = util.createDayByDate(nextDate)
+    //   this.cardMap.currList = util.changeListByType(this.cardMap.currList, 'next')
+    //   this.cardMap.currList = util.changeListByType(this.cardMap.prevList, 'curr')
+    // },
+    toNextCard () {
+      let prevDate = new Date(this.date)
+      prevDate.setMonth(prevDate.getMonth() - 1)
       this.date.setMonth(this.date.getMonth() + 1)
-      this.list = util.createDayByDate(this.date)
+      this.cardMap.nextList = util.changeListByType(this.cardMap.currList)
+      this.cardMap.currList = util.changeListByType(this.cardMap.prevList)
+      this.cardMap.prevList = util.createDayByDate(prevDate)
+    },
+    handleStart (event) {
+      let e = event.touches[0]
+      this.startDate = new Date()
+      this.pageX = e.pageX
+      this.startLeft = this.left
+      this.isMove = true
+    },
+    handleMove (event) {
+      if (!this.isMove) return
+      let e = event.touches[0]
+      let left = this.left - (e.pageX - this.pageX)
+      if (left < 0) left = 0 // 判断是否超出左边界
+      if (left > windowWidth * 2) left = windowWidth * 2 // 判断是否超出右边界
+      this.left = left
+      this.pageX = e.pageX
+    },
+    handleEnd (e) {
+      this.isMove = false
+      // let diffDate = new Date() - this.startDate // 本次移动的时间差
+      // let diffLeft = Math.abs(this.left - this.startLeft) // 本次移动的距离差
+      let remainder = this.left % windowWidth
+      if (remainder < windowWidth / 2) {
+        this.left -= remainder
+        // 移动到左侧
+      } else {
+        // 移动到右侧
+        this.left -= remainder
+        this.left += windowWidth
+        setTimeout(() => {
+          this.toNextCard()
+        }, 300)
+      }
     }
   }
 }
 </script>
 
 <style lang="less">
+body {
+  margin: 0;
+}
 .calendar {
-  max-width: 701px;
+  max-width: 700px;
   user-select: none;
   .calendar-header {
     background-color: #ddd;
   }
   .calendar-body,
   .calendar-week {
-    border-top: 1px solid #ddd;
-    border-left: 1px solid #ddd;
     box-sizing: border-box;
     overflow: hidden;
+    display: flex;
+    flex-wrap: wrap;
   }
   .calendar-item,
   .calendar-week-item {
-    width: 100px;
-    height: 100px;
-    border-right: 1px solid #eee;
+    flex: 1;
+    width: 100% / 7;
     border-bottom: 1px solid #eee;
     float: left;
     display: flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
+    position: relative;
+    &::after {
+      content: '';
+      margin-top: 100%;
+    }
   }
   .calendar-item {
-    cursor: pointer;
+    // cursor: pointer;
     &:hover {
       background-color: #f5f5f5;
     }
@@ -132,6 +221,16 @@ export default {
       color: #fff;
       background-color: #f06;
     }
+  }
+  .calendar-card {
+    width: 100%;
+    box-shadow: 0 0 5px #ddd;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  .calendar-content {
+    display: flex;
+    flex-wrap: nowrap;
   }
 }
 </style>
